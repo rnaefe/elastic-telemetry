@@ -1,6 +1,6 @@
 require('dotenv').config();
 const express = require('express');
-const bootstrap = require('./elastic/bootstrap');
+const bootstrap = require('./clickhouse/bootstrap');
 const logRoutes = require('./routes/log');
 const searchRoutes = require('./routes/search');
 const metaRoutes = require('./routes/meta');

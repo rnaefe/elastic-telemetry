@@ -209,7 +209,7 @@ export default function LogDetailPage() {
           <CardHeader>
             <CardTitle className="text-white">Raw JSON</CardTitle>
             <CardDescription className="text-zinc-400">
-              Raw data from Elasticsearch
+              Raw data from ClickHouse
             </CardDescription>
           </CardHeader>
           <CardContent>

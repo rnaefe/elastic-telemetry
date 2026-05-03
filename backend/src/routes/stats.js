@@ -1,280 +1,172 @@
 const express = require('express');
-const client = require('../elastic/client');
+const { client, qualifiedTable } = require('../clickhouse/client');
 
 const router = express.Router();
-const INDEX_NAME = process.env.ELASTICSEARCH_INDEX || 'fivem-logs';
 
-// Get top weapons (aggregation on combat events)
+function clampInt(v, fallback, min, max) {
+  const n = parseInt(v, 10);
+  if (!Number.isFinite(n) || n < min) return fallback;
+  if (n > max) return max;
+  return n;
+}
+
+async function queryRows(query, query_params) {
+  const rs = await client.query({ query, query_params, format: 'JSONEachRow' });
+  return rs.json();
+}
+
 router.get('/stats/weapons', async (req, res) => {
   try {
-    const { 
-      days = 7,      // Son kaç gün
-      limit = 10,    // Kaç silah
-      server_id      // Sunucu filtresi (zorunlu)
-    } = req.query;
-
+    const { server_id } = req.query;
     if (!server_id) {
       return res.status(400).json({ error: 'server_id is required' });
     }
 
-    const must = [
-      { term: { 'category.keyword': 'combat' } },
-      {
-        bool: {
-          should: [
-            { term: { 'server.id.keyword': server_id } },
-            { match_phrase: { 'server.id': server_id } },
-            { wildcard: { 'server.id': { value: `*${server_id}*`, case_insensitive: true } } }
-          ],
-          minimum_should_match: 1
-        }
-      },
-      {
-        range: {
-          '@timestamp': {
-            gte: `now-${days}d/d`,
-            lte: 'now/d'
-          }
-        }
-      }
-    ];
+    const days = clampInt(req.query.days, 7, 1, 365);
+    const limit = clampInt(req.query.limit, 10, 1, 100);
+    const table = qualifiedTable();
 
-    const result = await client.search({
-      index: INDEX_NAME,
-      size: 0, // We only want aggregations
-      query: {
-        bool: { must }
-      },
-      aggs: {
-        top_weapons: {
-          terms: {
-            field: 'payload.weaponName.keyword',
-            size: parseInt(limit),
-            order: { _count: 'desc' }
-          },
-          aggs: {
-            kills: {
-              filter: {
-                term: { 'event_type.keyword': 'player_killed' }
-              }
-            },
-            deaths: {
-              filter: {
-                term: { 'event_type.keyword': 'player_died' }
-              }
-            }
-          }
-        },
-        total_combat_events: {
-          value_count: {
-            field: 'event_type.keyword'
-          }
-        }
-      }
-    });
+    const query = `
+      SELECT
+        JSONExtractString(payload_json, 'weaponName') AS name,
+        count() AS total,
+        countIf(event_type = 'player_killed') AS kills,
+        countIf(event_type = 'player_died') AS deaths
+      FROM ${table}
+      WHERE server_id = {server_id:String}
+        AND category = 'combat'
+        AND timestamp >= now() - INTERVAL {days:UInt32} DAY
+      GROUP BY name
+      HAVING name != ''
+      ORDER BY total DESC
+      LIMIT {limit:UInt32}
+    `;
 
-    const weapons = result.aggregations.top_weapons.buckets.map(bucket => ({
-      name: bucket.key,
-      total: bucket.doc_count,
-      kills: bucket.kills.doc_count,
-      deaths: bucket.deaths.doc_count
+    const rows = await queryRows(query, { server_id: String(server_id), days, limit });
+
+    const weapons = rows.map(r => ({
+      name: r.name,
+      total: Number(r.total),
+      kills: Number(r.kills),
+      deaths: Number(r.deaths)
     }));
 
-    res.json({
-      weapons,
-      total: result.aggregations.total_combat_events.value,
-      period: `${days} days`
-    });
+    const total = weapons.reduce((acc, w) => acc + w.total, 0);
 
+    res.json({ weapons, total, period: `${days} days` });
   } catch (error) {
     console.error('Error fetching weapon stats:', error);
     res.status(500).json({ error: 'Internal Server Error', details: error.message });
   }
 });
 
-// Get top vehicles (aggregation on vehicle events)
 router.get('/stats/vehicles', async (req, res) => {
   try {
-    const { 
-      days = 7,
-      limit = 10,
-      server_id
-    } = req.query;
-
+    const { server_id } = req.query;
     if (!server_id) {
       return res.status(400).json({ error: 'server_id is required' });
     }
 
-    const must = [
-      { term: { 'category.keyword': 'vehicle' } },
-      {
-        bool: {
-          should: [
-            { term: { 'server.id.keyword': server_id } },
-            { match_phrase: { 'server.id': server_id } },
-            { wildcard: { 'server.id': { value: `*${server_id}*`, case_insensitive: true } } }
-          ],
-          minimum_should_match: 1
-        }
-      },
-      {
-        range: {
-          '@timestamp': {
-            gte: `now-${days}d/d`,
-            lte: 'now/d'
-          }
-        }
-      }
-    ];
+    const days = clampInt(req.query.days, 7, 1, 365);
+    const limit = clampInt(req.query.limit, 10, 1, 100);
+    const table = qualifiedTable();
 
-    const result = await client.search({
-      index: INDEX_NAME,
-      size: 0,
-      query: {
-        bool: { must }
-      },
-      aggs: {
-        top_vehicles: {
-          terms: {
-            field: 'payload.vehicleName.keyword',
-            size: parseInt(limit),
-            order: { _count: 'desc' }
-          }
-        },
-        total_vehicle_events: {
-          value_count: {
-            field: 'event_type.keyword'
-          }
-        }
-      }
-    });
+    const query = `
+      SELECT
+        JSONExtractString(payload_json, 'vehicleName') AS name,
+        count() AS count
+      FROM ${table}
+      WHERE server_id = {server_id:String}
+        AND category = 'vehicle'
+        AND timestamp >= now() - INTERVAL {days:UInt32} DAY
+      GROUP BY name
+      HAVING name != ''
+      ORDER BY count DESC
+      LIMIT {limit:UInt32}
+    `;
 
-    const vehicles = result.aggregations.top_vehicles.buckets.map(bucket => ({
-      name: bucket.key,
-      count: bucket.doc_count
-    }));
+    const rows = await queryRows(query, { server_id: String(server_id), days, limit });
 
-    res.json({
-      vehicles,
-      total: result.aggregations.total_vehicle_events.value,
-      period: `${days} days`
-    });
+    const vehicles = rows.map(r => ({ name: r.name, count: Number(r.count) }));
+    const total = vehicles.reduce((acc, v) => acc + v.count, 0);
 
+    res.json({ vehicles, total, period: `${days} days` });
   } catch (error) {
     console.error('Error fetching vehicle stats:', error);
     res.status(500).json({ error: 'Internal Server Error', details: error.message });
   }
 });
 
-// General stats endpoint
 router.get('/stats', async (req, res) => {
   try {
-    const { days = 7, server_id } = req.query;
-
+    const { server_id } = req.query;
     if (!server_id) {
       return res.status(400).json({ error: 'server_id is required' });
     }
 
-    const must = [
-      {
-        bool: {
-          should: [
-            { term: { 'server.id.keyword': server_id } },
-            { match_phrase: { 'server.id': server_id } },
-            { wildcard: { 'server.id': { value: `*${server_id}*`, case_insensitive: true } } }
-          ],
-          minimum_should_match: 1
-        }
-      },
-      {
-        range: {
-          '@timestamp': {
-            gte: `now-${days}d/d`,
-            lte: 'now/d'
-          }
-        }
-      }
-    ];
+    const days = clampInt(req.query.days, 7, 1, 365);
+    const table = qualifiedTable();
+    const params = { server_id: String(server_id), days };
 
-    const result = await client.search({
-      index: INDEX_NAME,
-      size: 0,
-      query: {
-        bool: { must }
-      },
-      aggs: {
-        total_logs: {
-          value_count: { field: '@timestamp' }
-        },
-        by_category: {
-          terms: { field: 'category.keyword', size: 20 }
-        },
-        by_event_type: {
-          // event_type is a keyword field; use it directly
-          terms: { field: 'event_type', size: 50 }
-        },
-        logs_per_day: {
-          date_histogram: {
-            field: '@timestamp',
-            calendar_interval: 'day'
-          }
-        },
-        unique_players: {
-          cardinality: {
-            field: 'player.identifiers.license'
-          }
-        }
-      }
-    });
+    const totalsQuery = `
+      SELECT
+        count() AS total,
+        countIf(toDate(timestamp) = today()) AS today,
+        uniqExact(player_license) AS uniquePlayers
+      FROM ${table}
+      WHERE server_id = {server_id:String}
+        AND timestamp >= now() - INTERVAL {days:UInt32} DAY
+    `;
 
-    // Today's logs count (with server filter)
-    const todayMust = [
-      {
-        bool: {
-          should: [
-            { term: { 'server.id.keyword': server_id } },
-            { match_phrase: { 'server.id': server_id } },
-            { wildcard: { 'server.id': { value: `*${server_id}*`, case_insensitive: true } } }
-          ],
-          minimum_should_match: 1
-        }
-      },
-      {
-        range: {
-          '@timestamp': {
-            gte: 'now/d',
-            lte: 'now'
-          }
-        }
-      }
-    ];
+    const byCategoryQuery = `
+      SELECT category, count() AS count
+      FROM ${table}
+      WHERE server_id = {server_id:String}
+        AND timestamp >= now() - INTERVAL {days:UInt32} DAY
+      GROUP BY category
+      ORDER BY count DESC
+      LIMIT 20
+    `;
 
-    const todayResult = await client.count({
-      index: INDEX_NAME,
-      query: {
-        bool: { must: todayMust }
-      }
-    });
+    const byEventTypeQuery = `
+      SELECT event_type AS eventType, count() AS count
+      FROM ${table}
+      WHERE server_id = {server_id:String}
+        AND timestamp >= now() - INTERVAL {days:UInt32} DAY
+      GROUP BY event_type
+      ORDER BY count DESC
+      LIMIT 50
+    `;
+
+    const dailyTrendQuery = `
+      SELECT
+        formatDateTime(toDate(timestamp), '%Y-%m-%dT00:00:00.000Z', 'UTC') AS date,
+        count() AS count
+      FROM ${table}
+      WHERE server_id = {server_id:String}
+        AND timestamp >= now() - INTERVAL {days:UInt32} DAY
+      GROUP BY toDate(timestamp)
+      ORDER BY toDate(timestamp) ASC
+    `;
+
+    const [totalsRows, categoryRows, eventTypeRows, dailyRows] = await Promise.all([
+      queryRows(totalsQuery, params),
+      queryRows(byCategoryQuery, params),
+      queryRows(byEventTypeQuery, params),
+      queryRows(dailyTrendQuery, params)
+    ]);
+
+    const totals = totalsRows[0] || { total: 0, today: 0, uniquePlayers: 0 };
 
     res.json({
-      total: result.aggregations.total_logs.value,
-      today: todayResult.count,
-      uniquePlayers: result.aggregations.unique_players.value,
-      byCategory: result.aggregations.by_category.buckets.map(b => ({
-        category: b.key,
-        count: b.doc_count
-      })),
-      byEventType: result.aggregations.by_event_type.buckets.map(b => ({
-        eventType: b.key,
-        count: b.doc_count
-      })),
-      dailyTrend: result.aggregations.logs_per_day.buckets.map(b => ({
-        date: b.key_as_string,
-        count: b.doc_count
-      })),
+      total: Number(totals.total),
+      today: Number(totals.today),
+      uniquePlayers: Number(totals.uniquePlayers),
+      byCategory: categoryRows.map(r => ({ category: r.category, count: Number(r.count) })),
+      byEventType: eventTypeRows.map(r => ({ eventType: r.eventType, count: Number(r.count) })),
+      dailyTrend: dailyRows.map(r => ({ date: r.date, count: Number(r.count) })),
       period: `${days} days`
     });
-
   } catch (error) {
     console.error('Error fetching stats:', error);
     res.status(500).json({ error: 'Internal Server Error', details: error.message });
@@ -282,4 +174,3 @@ router.get('/stats', async (req, res) => {
 });
 
 module.exports = router;
-

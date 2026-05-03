@@ -1,23 +1,25 @@
 {
-  "name": "fivem-log-es-test",
+  "name": "fiveops-backend",
   "version": "1.0.0",
-  "main": "index.js",
+  "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
-    "dev": "node --watch src/server.js",
-    "test": "node test_integration.js"
+    "dev": "node --watch src/server.js"
+  },
+  "engines": {
+    "node": ">=22"
   },
   "keywords": [
     "fivem",
     "logs",
-    "elasticsearch",
+    "clickhouse",
     "dashboard"
   ],
   "author": "",
   "license": "ISC",
-  "description": "FiveM logging backend with Elasticsearch",
+  "description": "FiveM logging backend with ClickHouse",
   "dependencies": {
-    "@elastic/elasticsearch": "^9.2.0",
+    "@clickhouse/client": "^1.8.0",
     "dotenv": "^16.4.0",
     "express": "^5.2.1",
     "express-rate-limit": "^8.2.1",

@@ -13,7 +13,7 @@ By participating in this project, you are expected to uphold general open-source
 ## Development Setup
 
 1. **Fork and Clone** the repository.
-2. Ensure you have **Node.js (v22+)**, **MySQL**, and **Elasticsearch (v9+)** installed.
+2. Ensure you have **Node.js (v22+)**, **MySQL**, and **ClickHouse (v24+)** installed.
 3. Switch to your project directory and set up the backend:
     ```bash
     cd backend
@@ -50,6 +50,6 @@ All contributions follow a standard Pull Request (PR) model:
 
 ## Security Vulnerabilities
 
-If you discover a vulnerability or security-related issue (especially regarding OAuth, JWT generation, Elasticsearch indexing, or unauthorized query exposure), please **do not open a public issue.** 
+If you discover a vulnerability or security-related issue (especially regarding OAuth, JWT generation, ClickHouse SQL exposure, or unauthorized query access), please **do not open a public issue.** 
 
 Instead, send a private message to the project maintainer or email directly. We aim to address security concerns immediately before public disclosure.

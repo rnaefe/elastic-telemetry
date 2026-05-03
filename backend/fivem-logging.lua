@@ -7,7 +7,7 @@ local SERVER_ID = GetConvar("sv_projectName", "unknown")
 
 local apikey = "fivem_3d31edce-c1a9-4ba1-837c-f905232c4a1e"
 
--- Helper: Extract standard player info for Elastic
+-- Helper: Extract standard player info for the log payload
 local function getPlayerInfo(src)
     if not src or src == 0 or src == "" or src == -1 then return nil end
     

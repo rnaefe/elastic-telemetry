@@ -1,46 +1,62 @@
 const express = require('express');
-const client = require('../elastic/client');
+const { client, qualifiedTable } = require('../clickhouse/client');
+const { normalizeLog } = require('../clickhouse/normalizeLog');
 
 const router = express.Router();
-const INDEX_NAME = process.env.ELASTICSEARCH_INDEX || 'fivem-logs';
 
 router.post('/log', async (req, res) => {
   try {
-    const logEntry = req.body;
+    const row = normalizeLog(req.body || {});
 
-    // Normalize event_type from common variants
-    const normalizedEventType =
-      logEntry.event_type ||
-      logEntry.eventType ||
-      logEntry.type ||
-      logEntry.event ||
-      (logEntry.payload && (logEntry.payload.event_type || logEntry.payload.eventType));
+    await client.insert({
+      table: qualifiedTable(),
+      values: [row],
+      format: 'JSONEachRow'
+    });
 
-    if (!normalizedEventType) {
+    res.status(201).json({ ok: true, id: row.id });
+  } catch (error) {
+    if (error && error.code === 'MISSING_EVENT_TYPE') {
       return res.status(400).json({ error: 'Missing event_type' });
     }
+    console.error('Error inserting log:', error);
+    res.status(500).json({ error: 'Internal Server Error', details: error.message });
+  }
+});
 
-    // Ensure canonical field is set
-    logEntry.event_type = normalizedEventType;
+router.post('/logs/bulk', async (req, res) => {
+  try {
+    const body = req.body;
+    const entries = Array.isArray(body) ? body : (body && Array.isArray(body.logs) ? body.logs : null);
 
-    // Ensure @timestamp exists
-    if (!logEntry['@timestamp']) {
-      logEntry['@timestamp'] = new Date().toISOString();
+    if (!entries) {
+      return res.status(400).json({ error: 'Body must be an array or { logs: [...] }' });
+    }
+    if (entries.length === 0) {
+      return res.json({ ok: true, inserted: 0 });
     }
 
-    // Index the document
-    const response = await client.index({
-      index: INDEX_NAME,
-      document: logEntry
+    const rows = [];
+    for (let i = 0; i < entries.length; i++) {
+      try {
+        rows.push(normalizeLog(entries[i]));
+      } catch (e) {
+        if (e.code === 'MISSING_EVENT_TYPE') {
+          return res.status(400).json({ error: 'Missing event_type', index: i });
+        }
+        return res.status(400).json({ error: e.message, index: i });
+      }
+    }
+
+    await client.insert({
+      table: qualifiedTable(),
+      values: rows,
+      format: 'JSONEachRow'
     });
 
-    res.status(201).json({
-      ok: true,
-      id: response._id
-    });
-
+    res.status(201).json({ ok: true, inserted: rows.length });
   } catch (error) {
-    console.error('Error indexing log:', error);
+    console.error('Error bulk inserting logs:', error);
     res.status(500).json({ error: 'Internal Server Error', details: error.message });
   }
 });

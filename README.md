@@ -1,8 +1,8 @@
 <div align="center">
   <img src="https://raw.githubusercontent.com/tandpfun/skill-icons/main/icons/NextJS-Dark.svg" width="60" alt="NextJS"/>
   <img src="https://raw.githubusercontent.com/tandpfun/skill-icons/main/icons/NodeJS-Dark.svg" width="60" alt="NodeJS"/>
-  <img src="https://raw.githubusercontent.com/tandpfun/skill-icons/refs/heads/main/icons/Elasticsearch-Dark.svg" width="60" alt="Elastic Search"/>
   <img src="https://raw.githubusercontent.com/tandpfun/skill-icons/main/icons/MySQL-Dark.svg" width="60" alt="MySQL"/>
+  <img src="https://cdn.simpleicons.org/clickhouse/FFCC01" width="60" alt="ClickHouse"/>
 
   <br/>
   <br/>
@@ -32,14 +32,14 @@
 
 ## Overview
 
-The **FiveM Log Management System** provides administrators and developers with real-time insights into server events. Built around **Elasticsearch** for fast querying and **Next.js** for a modern admin dashboard, it serves as a solid, developer-friendly starting point that you can easily fork, expand, and tailor to your server's exact needs.
+The **FiveM Log Management System** provides administrators and developers with real-time insights into server events. Built around **ClickHouse** for fast columnar analytics and **Next.js** for a modern admin dashboard, it serves as a solid, developer-friendly starting point that you can easily fork, expand, and tailor to your server's exact needs.
 
 Stop relying on slow, unsearchable Discord webhook logs. Take control of your server's data with advanced filtering and weapon/vehicle statistics aggregations.
 
 ## Features
 
 - **High-Throughput Ingestion:** Custom Node.js backend handles thousands of events per second via optimized async bulk processing.
-- **Elasticsearch Powered:** Full-text search, pagination, and millisecond-level aggregations over millions of rows.
+- **ClickHouse Powered:** Columnar storage with parameterized SQL search, pagination, and sub-second analytical aggregations over billions of rows.
 - **Secure OAuth2 Auth:** Seamless staff login using Discord. Automated server-access resolution via Discord Guild membership.
 - **Rich Analytics:** Automated statistical tracking of weapons used, vehicles spawned, and economic transactions.
 - **Modern Dashboard:** Next.js App Router, `shadcn/ui`, and Tailwind CSS combined for a flawless, snappy user experience.
@@ -92,9 +92,9 @@ Browse the current UI and dashboard flow in the dedicated [Showcase](SHOWCASE.md
 The system operates on an event-driven decoupled model optimized for speed:
 
 1. **Ingest (Node.js):** A lightweight API that blindly accepts massive batches of JSON logs from your game server.
-2. **Storage (Elasticsearch):** Acts as the timeseries database for billions of logs, capable of instant aggregations and full-text searches.
+2. **Storage (ClickHouse):** Acts as the time-series analytics database for billions of log rows, with MergeTree partitioning, TTL-based retention, and sub-second analytical SQL.
 3. **Storage (MySQL):** Used exclusively for managing relational configuration data (like `servers` and `users`).
-4. **Dashboard (Next.js):** The proxy layer. It verifies Discord credentials via MySQL before securely querying Elasticsearch on the user's behalf.
+4. **Dashboard (Next.js):** The proxy layer. It verifies Discord credentials via MySQL before securely querying the ClickHouse-backed ingest API on the user's behalf.
 
 For a deeper dive into the system design, please review the full **[Architecture Overview](ARCHITECTURE.md)**.
 
@@ -102,7 +102,7 @@ For a deeper dive into the system design, please review the full **[Architecture
 
 ```text
 fivem-log-system/
-├── backend/               # Node.js Ingest REST API & Elasticsearch mapping
+├── backend/               # Node.js Ingest REST API & ClickHouse schema
 ├── dashboard/             # Next.js 14 Web Application (UI & Auth)
 ├── docs/                  # Extensive technical documentation
 ├── ARCHITECTURE.md        # Deep dive into distributed architecture
@@ -118,7 +118,7 @@ For the most comprehensive guide, please refer to our **[Full Setup Guide](docs/
 ### Quick Start Summary
 
 #### 1. Requirements
-Ensure you have installed: **Node.js 22+**, **MySQL 8.0+**, and **Elasticsearch 9.0+**. You will also need a registered Discord Developer App for OAuth2.
+Ensure you have installed: **Node.js 22+**, **MySQL 8.0+**, and **ClickHouse 24+**. You will also need a registered Discord Developer App for OAuth2.
 
 #### 2. Backend & Ingest Server
 ```bash
@@ -147,7 +147,7 @@ Move the `fivem-logging.lua` into your FiveM Server's resource folder and add th
 
 We believe in making powerful tools easy to use through exceptional documentation. Dive deeper into the specific areas of the exact systems you wish to explore:
 
-- **[Architecture Overview](ARCHITECTURE.md):** Understand the flow of data from game server to Elasticsearch.
+- **[Architecture Overview](ARCHITECTURE.md):** Understand the flow of data from game server to ClickHouse.
 - **[Installation & Setup](docs/SETUP.md):** Step-by-step instructions from a blank VPS to a production-ready application.
 - **[API Reference](docs/API_REFERENCE.md):** Connect external tools or write your own custom log ingesters using the REST API.
 - **[FiveM Integration](docs/INTEGRATION.md):** Implement Lua exports directly into your existing scripts.

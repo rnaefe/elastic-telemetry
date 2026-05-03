@@ -10,22 +10,36 @@ Before beginning, ensure your host machine (or isolated VPS instances) meet the 
 
 - **Node.js:** v22.0 or higher.
 - **MySQL:** v8.0 or higher (MariaDB equivalent is compatible).
-- **Elasticsearch:** v9.x or higher (A single node is sufficient for most medium servers).
+- **ClickHouse:** v24.x or higher (A single node is sufficient for most medium servers).
 - **PM2 / Screen:** For managing background application processes in a production setting.
 - **Discord Developer Application:** Required for OAuth2 staff logins.
 
 ---
 
-## 2. Elasticsearch Installation
+## 2. ClickHouse Installation
 
-Elasticsearch is the backbone of the logging system's timeseries storage.
+ClickHouse is the backbone of the logging system's time-series storage.
 
-1. Download and install Elasticsearch following the official guide for your OS.
-2. Start the Elasticsearch service.
-3. Verify that the node is running locally:
-   ```bash
-   curl -X GET "localhost:9200/"
-   ```
+**Option A — Docker (fastest):**
+```bash
+docker run -d --name fiveops-ch \
+  -p 8123:8123 -p 9000:9000 \
+  -v fiveops-ch-data:/var/lib/clickhouse \
+  clickhouse/clickhouse-server
+```
+
+**Option B — Native install:** follow the [official ClickHouse install guide](https://clickhouse.com/docs/en/install) for your OS, then start the `clickhouse-server` service.
+
+Verify the HTTP interface is reachable:
+```bash
+curl http://localhost:8123/ping   # should return: Ok.
+```
+
+The backend will create the `fiveops` database and `logs` table automatically on first start (see `backend/src/clickhouse/bootstrap.js`). The TTL is derived from `LOG_RETENTION_DAYS` (default 90). If you change that value after the table already exists, run a one-off:
+
+```sql
+ALTER TABLE fiveops.logs MODIFY TTL toDateTime(timestamp) + INTERVAL 180 DAY;
+```
 
 ---
 
@@ -49,7 +63,7 @@ The relational state of the application (configurations, users, channels) is gov
 
 ## 4. Backend Service Configuration (Ingest)
 
-The backend service is responsible for ingesting logs and bridging Elasticsearch queries. It does not connect to MySQL.
+The backend service is responsible for ingesting logs and bridging ClickHouse queries. It does not connect to MySQL.
 
 1. Navigate to the `backend` directory:
    ```bash
@@ -60,7 +74,7 @@ The backend service is responsible for ingesting logs and bridging Elasticsearch
    ```bash
    cp env.example .env
    ```
-3. Ensure your Elasticsearch URL is correct inside `.env` (`ELASTICSEARCH_NODE=http://localhost:9200`).
+3. Ensure your ClickHouse URL is correct inside `.env` (`CLICKHOUSE_URL=http://localhost:8123`).
 4. Start the application:
    ```bash
    npm run prod
@@ -108,7 +122,7 @@ The frontend visualizer runs via Next.js and connects to both MySQL (for setting
    DISCORD_CLIENT_SECRET=copied_from_step_5
    DISCORD_REDIRECT_URI=http://localhost:3001/api/auth/callback
 
-   NEXT_PUBLIC_API_URL=http://localhost:3000
+   NEXT_PUBLIC_API_URL=http://localhost:3050
    ```
 4. Build and start the Next.js production server:
    ```bash
