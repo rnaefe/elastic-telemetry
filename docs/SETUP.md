@@ -1,6 +1,6 @@
 # Installation & Setup Guide
 
-This document outlines the end-to-end installation process for deploying the FiveM Log Management System in a production or development environment.
+This document outlines the end-to-end installation process for deploying the "elastic-telemetry" in a production or development environment.
 
 ---
 
