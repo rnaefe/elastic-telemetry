@@ -15,6 +15,7 @@
   <p>
     <a href="#why-it-works">Why it works</a> •
     <a href="#architecture">Architecture</a> •
+    <a href="#system-boundaries">System boundaries</a> •
     <a href="docs/SETUP.md">Setup</a> •
     <a href="SHOWCASE.md">Showcase</a>
   </p>
@@ -38,8 +39,8 @@ That split is the whole trick. The hot path stays thin, the query path stays pow
 
 ## Why It Works
 
-- **Runtime cost moved to the edge, but not too much.** Emitters collect local context, attach server/service metadata, and post JSON. They do not try to search, aggregate, or persist locally.
-- **The backend is deliberately small.** Express accepts `/log`, stamps `@timestamp` when needed, normalizes common `event_type` variants, and indexes one document into the configured Elasticsearch index.
+- **Runtime cost stays small.** Emitters collect local context, attach server/service metadata, and post JSON. They do not try to search, aggregate, or persist locally.
+- **The ingest service is deliberately narrow.** Express accepts `/log`, stamps `@timestamp` when needed, normalizes common `event_type` variants, and indexes one document into the configured Elasticsearch index.
 - **Search is built from structured filters.** `/search` composes Elasticsearch Query DSL for licenses, event types, categories, server IDs, dev-server flags, date ranges, fuzzy player names, and broad text search across known payload fields.
 - **Analytics run where the data lives.** Weapon, vehicle, category, event-type, daily trend, and unique-player stats use Elasticsearch aggregations instead of replaying logs through the app server.
 - **Access control is not hidden in the UI.** Dashboard API routes load the current user from a JWT-backed session, check MySQL access tables, then proxy allowed queries to the backend with the server identifier forced into the request.
@@ -78,11 +79,25 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for the deeper breakdown.
 
 ## Trade-Offs
 
-This project chooses a thin ingest API over a heavyweight event broker. That keeps deployment simple and latency low, but it means extreme burst buffering belongs in infrastructure or a future queue layer.
+| Decision | Why | Cost |
+|---|---|---|
+| Thin HTTP ingest instead of a broker-first design | Keeps deployment and emitter integration simple | Extreme burst buffering belongs in infrastructure or a future queue layer |
+| Elasticsearch for event data | Search, filters, fuzzy lookup, and aggregations stay close to the data | Requires operating a second datastore |
+| MySQL for control state | Users, sessions, servers, channels, and access mappings are relational | Application state and telemetry live in different systems |
+| Next.js as an authorization proxy | Raw Elasticsearch-facing routes stay away from browser clients | Dashboard requests take an extra application hop |
+| Dynamic event payloads | Adapters can attach event-specific metadata without schema churn | Stable fields still need explicit mappings and query discipline |
 
-It chooses Elasticsearch for log data and MySQL for application state. That is two datastores, but each one is doing the job it is good at: search-heavy documents in Elasticsearch, relational access control in MySQL.
+## System Boundaries
 
-The ingest route validates `x-telemetry-key` or `Authorization: Bearer ...` against the MySQL `servers.api_key` value and requires it to match the emitted `server.id`. Keep ingest private anyway; API keys reduce accidental exposure, they do not replace network boundaries.
+This repository intentionally does **not** pretend to solve every observability problem.
+
+- There is no durable broker between emitters and Elasticsearch in the current design. If sustained burst buffering is required, a queue belongs in front of the indexing path.
+- API keys reduce accidental exposure but do not replace network boundaries. Keep ingest private where possible.
+- Elasticsearch owns telemetry/search behavior; MySQL is not a fallback event store.
+- The dashboard enforces application-level access before proxying searches, so exposing Elasticsearch directly to browser clients defeats the intended trust boundary.
+- Dynamic payloads make the ingest surface flexible, but fields that become operationally important should graduate into explicit mappings and documented query contracts.
+
+These constraints are deliberate: the project optimizes for a thin runtime path, useful search, and understandable operations before adding distributed infrastructure.
 
 ## Setup
 
